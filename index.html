@@ -12,7 +12,6 @@
             margin: 20px; 
             line-height: 1.6; 
             color: #333; 
-            transition: all 0.3s ease;
         }
         .container {
             max-width: 1200px;
@@ -238,6 +237,13 @@
     </div>
 
     <script>
+        // Variáveis para armazenar tempos de referência
+        let startTime = 0;
+        let domContentLoadedTime = 0;
+        let windowLoadTime = 0;
+        let firstPaintTime = 0;
+        let firstContentfulPaintTime = 0;
+        
         // Atualiza a largura da janela atual
         function updateWindowWidth() {
             const width = window.innerWidth;
@@ -259,36 +265,54 @@
             statusEl.className = `status-indicator ${block ? 'status-blocked' : 'status-non-blocked'}`;
         }
         
-        // Medir o tempo de renderização
-        function measurePaintTiming() {
+        // Medir tempos de carregamento e renderização
+        function measurePerformance() {
             return new Promise(resolve => {
-                if (window.performance && window.performance.getEntriesByType) {
-                    // Reset as entradas de performance
-                    performance.clearMarks();
-                    performance.clearMeasures();
-                    
-                    const observer = new PerformanceObserver((list) => {
-                        const paintEntries = list.getEntriesByType("paint");
-                        const results = {};
-                        
-                        paintEntries.forEach(entry => {
-                            results[entry.name] = entry.startTime;
-                        });
-                        
-                        observer.disconnect();
-                        resolve(results);
-                    });
-                    
-                    observer.observe({ entryTypes: ["paint"] });
-                    
-                    // Forçar dois quadros para garantir que as métricas sejam capturadas
-                    requestAnimationFrame(() => {
-                        requestAnimationFrame(() => {});
+                startTime = performance.now();
+                
+                // Registrar quando o DOM está completamente carregado
+                if (document.readyState === 'loading') {
+                    document.addEventListener('DOMContentLoaded', () => {
+                        domContentLoadedTime = performance.now() - startTime;
                     });
                 } else {
-                    console.log("Performance API não suportada neste navegador.");
-                    resolve({});
+                    domContentLoadedTime = performance.now() - startTime;
                 }
+                
+                // Registrar quando a janela está completamente carregada
+                if (document.readyState !== 'complete') {
+                    window.addEventListener('load', () => {
+                        windowLoadTime = performance.now() - startTime;
+                    });
+                } else {
+                    windowLoadTime = performance.now() - startTime;
+                }
+                
+                // Usar a API Paint Timing para medir os tempos de renderização
+                const observer = new PerformanceObserver((list) => {
+                    const entries = list.getEntries();
+                    for (const entry of entries) {
+                        if (entry.name === 'first-paint') {
+                            firstPaintTime = entry.startTime;
+                        }
+                        if (entry.name === 'first-contentful-paint') {
+                            firstContentfulPaintTime = entry.startTime;
+                        }
+                    }
+                    observer.disconnect();
+                    
+                    // Aguardar um pouco para garantir que todas as métricas foram coletadas
+                    setTimeout(() => {
+                        resolve({
+                            domContentLoaded: domContentLoadedTime,
+                            windowLoaded: windowLoadTime,
+                            firstPaint: firstPaintTime,
+                            firstContentfulPaint: firstContentfulPaintTime
+                        });
+                    }, 1000);
+                });
+                
+                observer.observe({ type: 'paint', buffered: true });
             });
         }
         
@@ -301,35 +325,20 @@
             resultSection.classList.add("result-item");
             resultSection.innerHTML = `<h3>Teste ${resultType}:</h3>`;
             
-            // Adicionar eventos de carregamento
-            const domContentLoaded = performance.timing.domContentLoadedEventEnd - performance.timing.navigationStart;
-            const windowLoaded = performance.timing.loadEventEnd - performance.timing.navigationStart;
-            
-            resultSection.innerHTML += `<p>DOMContentLoaded: ${domContentLoaded.toFixed(2)}ms</p>`;
-            resultSection.innerHTML += `<p>Window Loaded: ${windowLoaded.toFixed(2)}ms</p>`;
-            
-            // Adicionar medições de paint
-            for (const key in results) {
-                const formattedKey = key === 'first-paint' ? 'First Paint' : 
-                                    (key === 'first-contentful-paint' ? 'First Contentful Paint' : key);
-                
-                resultSection.innerHTML += `<p>${formattedKey}: ${results[key].toFixed(2)}ms</p>`;
-            }
+            // Adicionar métricas de carregamento
+            resultSection.innerHTML += `<p>DOMContentLoaded: ${results.domContentLoaded.toFixed(2)}ms</p>`;
+            resultSection.innerHTML += `<p>Window Loaded: ${results.windowLoaded.toFixed(2)}ms</p>`;
+            resultSection.innerHTML += `<p>First Paint: ${results.firstPaint.toFixed(2)}ms</p>`;
+            resultSection.innerHTML += `<p>First Contentful Paint: ${results.firstContentfulPaint.toFixed(2)}ms</p>`;
             
             resultsDiv.appendChild(resultSection);
             
             // Atualizar métricas na interface
-            document.getElementById('dom-content-loaded').textContent = `${domContentLoaded.toFixed(2)}ms`;
-            document.getElementById('window-loaded').textContent = `${windowLoaded.toFixed(2)}ms`;
+            document.getElementById('dom-content-loaded').textContent = `${results.domContentLoaded.toFixed(2)}ms`;
+            document.getElementById('window-loaded').textContent = `${results.windowLoaded.toFixed(2)}ms`;
             document.getElementById('css-blocked').textContent = isBlocking ? 'Sim' : 'Não';
-            
-            if (results['first-paint']) {
-                document.getElementById('first-paint').textContent = `${results['first-paint'].toFixed(2)}ms`;
-            }
-            
-            if (results['first-contentful-paint']) {
-                document.getElementById('first-contentful-paint').textContent = `${results['first-contentful-paint'].toFixed(2)}ms`;
-            }
+            document.getElementById('first-paint').textContent = `${results.firstPaint.toFixed(2)}ms`;
+            document.getElementById('first-contentful-paint').textContent = `${results.firstContentfulPaint.toFixed(2)}ms`;
         }
         
         // Limpar resultados
@@ -347,41 +356,78 @@
             document.getElementById('loading-indicator').classList.toggle('active', show);
         }
         
-        // Executar teste
-        async function runTest(isBlocking) {
+        // Recarregar página com configurações específicas
+        function reloadWithSettings(isBlocking) {
+            // Salvar configurações no localStorage
+            localStorage.setItem('testMode', isBlocking ? 'blocking' : 'non-blocking');
+            localStorage.setItem('useBootstrap', document.getElementById('use-bootstrap').checked);
+            localStorage.setItem('useBulma', document.getElementById('use-bulma').checked);
+            
+            // Recarregar a página
+            location.reload();
+        }
+        
+        // Executar teste com recarregamento
+        function runTest(isBlocking) {
             toggleLoadingIndicator(true);
-            
-            // Limpar o cache do navegador para testes mais precisos
-            localStorage.clear();
-            sessionStorage.clear();
-            
-            // Configurar CSS como bloqueador ou não
-            setRenderBlocking(isBlocking);
-            
-            // Forçar um reflow
-            document.body.offsetHeight;
-            
-            // Medir tempo de renderização
-            const results = await measurePaintTiming();
-            
-            // Exibir resultados
-            displayResults(results, isBlocking);
-            
-            toggleLoadingIndicator(false);
+            setTimeout(() => reloadWithSettings(isBlocking), 500);
         }
         
         // Executar comparação (ambos os testes em sequência)
-        async function runComparison() {
+        function runComparison() {
             clearResults();
-            await runTest(false); // Primeiro sem bloqueio
-            await new Promise(resolve => setTimeout(resolve, 1000)); // Pequena pausa
-            await runTest(true);  // Depois com bloqueio
+            localStorage.setItem('comparison', 'true');
+            localStorage.setItem('comparisonStep', '1');
+            reloadWithSettings(false); // Começar com teste não bloqueante
+        }
+        
+        // Aplicar configurações do teste na inicialização
+        function applyTestSettings() {
+            const testMode = localStorage.getItem('testMode');
+            const comparison = localStorage.getItem('comparison') === 'true';
+            const comparisonStep = localStorage.getItem('comparisonStep');
+            
+            if (testMode) {
+                const useBootstrap = localStorage.getItem('useBootstrap') === 'true';
+                const useBulma = localStorage.getItem('useBulma') === 'true';
+                
+                document.getElementById('use-bootstrap').checked = useBootstrap;
+                document.getElementById('use-bulma').checked = useBulma;
+                
+                const isBlocking = testMode === 'blocking';
+                setRenderBlocking(isBlocking);
+                
+                // Realizar medições de desempenho
+                measurePerformance().then(results => {
+                    displayResults(results, isBlocking);
+                    toggleLoadingIndicator(false);
+                    
+                    // Limpar configurações a menos que esteja em modo de comparação
+                    if (!comparison) {
+                        localStorage.removeItem('testMode');
+                        localStorage.removeItem('useBootstrap');
+                        localStorage.removeItem('useBulma');
+                    } else if (comparisonStep === '1') {
+                        // Avançar para o próximo passo da comparação
+                        localStorage.setItem('comparisonStep', '2');
+                        setTimeout(() => reloadWithSettings(true), 1000); // Próximo teste: bloqueante
+                    } else if (comparisonStep === '2') {
+                        // Finalizar comparação
+                        localStorage.removeItem('comparison');
+                        localStorage.removeItem('comparisonStep');
+                        localStorage.removeItem('testMode');
+                        localStorage.removeItem('useBootstrap');
+                        localStorage.removeItem('useBulma');
+                    }
+                });
+            } else {
+                toggleLoadingIndicator(false);
+            }
         }
         
         // Inicialização
         document.addEventListener('DOMContentLoaded', function() {
             updateWindowWidth();
-            setRenderBlocking(false);
             
             // Event listeners
             document.getElementById('run-non-blocking').addEventListener('click', () => runTest(false));
@@ -391,6 +437,9 @@
             
             // Atualizar largura da janela ao redimensionar
             window.addEventListener('resize', updateWindowWidth);
+            
+            // Aplicar configurações de teste se necessário
+            applyTestSettings();
         });
     </script>
 </body>
