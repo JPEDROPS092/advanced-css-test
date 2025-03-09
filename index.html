@@ -3,149 +3,155 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exemplo de CSS de Bloqueio de Renderização</title>
+    <title>Teste Rápido de CSS de Bloqueio de Renderização</title>
     <style>
-        body {
-            font-family: sans-serif;
-            margin: 20px;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-        }
-        th, td {
-            border: 1px solid black;
-            padding: 8px;
-            text-align: left;
-        }
-        th {
-            background-color: #f2f2f2;
-        }
-        ul {
-            list-style-type: disc;
-            margin-left: 20px;
-        }
+        /* Estilos básicos (simplificados para testes rápidos) */
+        body { font-family: sans-serif; margin: 20px; line-height: 1.6; color: #333; }
+        h1 { color: #222; border-bottom: 2px solid #ddd; padding-bottom: 0.5rem; }
+        #results { margin-top: 1rem; padding: 1rem; border: 1px solid #ddd; border-radius: 4px; }
+        #results h2 { margin-top: 0; color: #444; }
+        .result-item { margin-bottom: 0.5rem; }
+        .button-container { margin-top: 1rem; display: flex; gap: 10px; }
+        button { padding: 0.5rem 1rem; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+        button:hover { background-color: #0056b3; }
+        .loading { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(255, 255, 255, 0.8); z-index: 1000; justify-content: center; align-items: center; font-size: 2rem; color: #333; }
+        .loading.active { display: flex; }
+        .non-blocking-style { color: green; }
 
-        /*  Crucial:  Estes são os estilos que demonstrarão o bloqueio de renderização.
-            Nós os incluímos *inline* para mostrar o impacto imediato, mas no
-            JavaScript, também adicionaremos/removeremos dinamicamente atributos de mídia para
-            folhas de estilo externas para ver a diferença.
-        */
-        .not-blocked {
-          /* Estilos que devem SEMPRE ser aplicados imediatamente (ou muito rápido) */
-          color: green; /* Exemplo: um estilo básico que não deve bloquear */
-        }
+        /* Adicionado: Estilos para o modo de teste rápido */
+        #quick-test-controls { margin-bottom: 1rem; padding: 0.5rem; border: 1px solid #ccc; border-radius: 4px; background-color: #f8f8f8; }
+        #quick-test-controls label { margin-right: 1rem; }
+        #quick-test-controls input[type="number"] { width: 80px; padding: 0.25rem; border: 1px solid #ccc; border-radius: 4px; }
     </style>
 
-    <!--
-       MUITO IMPORTANTE: Estes arquivos CSS externos são *INTENCIONALMENTE* grandes
-       (usando Tailwind e Bootstrap) para exagerar o efeito de bloqueio de renderização
-       para fins de demonstração.  Em um cenário do mundo real, você NÃO
-       gostaria de incluir arquivos CSS tão grandes e não otimizados diretamente.
-       O atributo `media` nesses links será manipulado dinamicamente.
-    -->
-    <link id="tailwind-link" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css">
-    <link id="bootstrap-link" rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css">
-
-
+    <!-- CSS externo (Tailwind e Bootstrap - ainda grandes, mas o usuário pode escolher não usá-los) -->
+    <link id="tailwind-link" rel="stylesheet" href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" media="none">
+    <link id="bootstrap-link" rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/css/bootstrap.min.css" media="none">
 </head>
 <body>
 
-    <h1>Render Blocking CSS</h1>
+    <h1>Teste Rápido de CSS de Bloqueio de Renderização</h1>
 
     <p>
-        Tente redimensionar a largura da janela para <strong>menos</strong>
+        Este teste demonstra o impacto do CSS de bloqueio de renderização.  Use os controles abaixo para testes rápidos.
     </p>
 
+    <!-- Controles para o Modo de Teste Rápido -->
+    <div id="quick-test-controls">
+        <label><input type="checkbox" id="use-tailwind"> Usar Tailwind CSS</label>
+        <label><input type="checkbox" id="use-bootstrap"> Usar Bootstrap CSS</label>
+        <label>Repetições: <input type="number" id="num-repetitions" value="3" min="1"></label>
+        <button id="run-quick-test">Executar Teste Rápido</button>
+    </div>
+
+    <div class="button-container">
+        <button id="run-non-blocking">Executar Teste (Não Bloqueador)</button>
+        <button id="run-blocking">Executar Teste (Bloqueador)</button>
+        <button id="clear-results">Limpar Resultados</button>
+    </div>
+
+    <div id="results">
+        <h2>Resultados:</h2>
+        <p>Clique nos botões ou use os controles de teste rápido.</p>
+    </div>
+
+    <div id="loading-indicator" class="loading">
+        Carregando...
+    </div>
+
     <script>
-        // Função para medir o tempo de pintura
-        function measurePaintTiming() {
+    // --- Funções de Utilidade (Mesmas do exemplo anterior, com pequenas modificações) ---
+
+    function measurePaintTiming() {
+        return new Promise(resolve => {
             if (window.performance && window.performance.getEntriesByType) {
-                const paintEntries = window.performance.getEntriesByType("paint");
-
-                paintEntries.forEach(entry => {
-                    console.log(`${entry.name}: ${entry.startTime}ms`);
-
-                    // Adiciona os resultados à página (opcional)
-                    const resultsDiv = document.getElementById("results");
-                    if (resultsDiv) {
-                        const p = document.createElement("p");
-                        p.textContent = `${entry.name}: ${entry.startTime.toFixed(2)}ms`;
-                        resultsDiv.appendChild(p);
-                    }
+                const observer = new PerformanceObserver((list) => {
+                    const paintEntries = list.getEntriesByType("paint");
+                    const results = {};
+                    paintEntries.forEach(entry => {
+                        results[entry.name] = entry.startTime; // Não formata aqui, formata ao exibir
+                    });
+                    observer.disconnect();
+                    resolve(results);
                 });
+                observer.observe({ entryTypes: ["paint"] });
+                requestAnimationFrame(() => { requestAnimationFrame(() => {}); });
             } else {
                 console.log("Performance API (paint timing) não suportada.");
+                resolve({});
             }
+        });
+    }
+
+    function setRenderBlocking(block) {
+        const tailwindLink = document.getElementById("tailwind-link");
+        const bootstrapLink = document.getElementById("bootstrap-link");
+        const useTailwind = document.getElementById("use-tailwind").checked;
+        const useBootstrap = document.getElementById("use-bootstrap").checked;
+
+        tailwindLink.media = block && useTailwind ? "all" : "none";
+        bootstrapLink.media = block && useBootstrap ? "all" : "none";
+    }
+
+    function displayResults(results, isBlocking, repetition = null) {
+        const resultsDiv = document.getElementById("results");
+        const resultType = isBlocking ? "Bloqueador" : "Não Bloqueador";
+        const repetitionLabel = repetition !== null ? ` (Repetição ${repetition + 1})` : "";
+
+        const resultSection = document.createElement("div");
+        resultSection.classList.add("result-item");
+        resultSection.innerHTML = `<h3>Teste ${resultType}${repetitionLabel}:</h3>`;
+
+        for (const key in results) {
+            const p = document.createElement("p");
+            p.textContent = `${key}: ${results[key].toFixed(2)}ms`; // Formata para 2 casas decimais
+            resultSection.appendChild(p);
         }
+        resultsDiv.appendChild(resultSection);
+    }
+    function clearResults() {
+        document.getElementById("results").innerHTML = "<h2>Resultados:</h2>";
+    }
+    function toggleLoadingIndicator(show) {
+        document.getElementById("loading-indicator").classList.toggle("active", show);
+    }
 
-         // Função para obter o tempo de carregamento do DOM
-        function getDOMLoadTime() {
-            if (document.readyState === 'loading') {
-                //Se a página ainda está carregando...
-                return new Promise(resolve => {
-                    document.addEventListener('DOMContentLoaded', () => resolve(performance.now()));
-                });
-            } else {
-                return Promise.resolve(performance.now());
-            }
+    // --- Funções de Teste ---
+    async function runTest(isBlocking) {
+        toggleLoadingIndicator(true);
+        setRenderBlocking(isBlocking);
+        const results = await measurePaintTiming();
+        displayResults(results, isBlocking);
+        toggleLoadingIndicator(false);
+    }
+
+    // --- Função de Teste Rápido ---
+    async function runQuickTest() {
+        toggleLoadingIndicator(true);
+        const numRepetitions = parseInt(document.getElementById("num-repetitions").value, 10) || 1;
+
+        for (let i = 0; i < numRepetitions; i++) {
+            // Alterna entre bloqueador e não bloqueador em cada repetição
+            const isBlocking = i % 2 === 0;
+             //Limpa o LocalStorage
+            localStorage.clear();
+            setRenderBlocking(isBlocking);
+            const results = await measurePaintTiming();
+            displayResults(results, isBlocking, i);
         }
-
-        // Aguarda o evento DOMContentLoaded e chama measurePaintTiming
-          getDOMLoadTime().then(() => {
-                //Pequeno delay para garantir que o CSS seja carregado e a pintura aconteça.  Em um teste real,
-                //você usaria um evento mais robusto, como window.onload, ou observaria mudanças específicas no DOM.
-               setTimeout(measurePaintTiming, 0);
-          });
+        toggleLoadingIndicator(false);
+    }
 
 
-        //Função para simular o bloqueio/desbloqueio de renderização
-        function toggleRenderBlocking(block) {
-            const tailwindLink = document.getElementById("tailwind-link");
-            const bootstrapLink = document.getElementById("bootstrap-link");
+    // --- Event Listeners ---
+    document.getElementById("run-non-blocking").addEventListener("click", () => { localStorage.clear(); runTest(false); });
+    document.getElementById("run-blocking").addEventListener("click", () => { localStorage.clear(); runTest(true); });
+    document.getElementById("clear-results").addEventListener("click", clearResults);
+    document.getElementById("run-quick-test").addEventListener("click", runQuickTest); // Novo listener
 
-
-             if (block) {
-                // Torna o CSS *bloqueador* (comportamento padrão)
-                tailwindLink.media = "all"; // ou apenas remova o atributo media
-                bootstrapLink.media = "all";
-            } else {
-                 //Torna o CSS *não bloqueador*
-                tailwindLink.media = "screen and (max-width: 1px)"; // Praticamente nunca corresponderá
-                bootstrapLink.media = "screen and (max-width: 1px)";
-            }
-
-
-        }
-
-
-        //Exemplo de uso:  Execute o teste com e sem bloqueio
-        function runTest() {
-
-            // 1. Teste SEM bloqueio de renderização.
-            console.log("---- Teste SEM Bloqueio de Renderização ----");
-            toggleRenderBlocking(false); // Garante que o CSS *não* está bloqueando
-            window.location.reload();   //Recarrega para um teste limpo.
-          
-            // 2. Teste COM bloqueio de renderização (após um delay, para que a página anterior tenha tempo de carregar).
-            setTimeout(() => {
-                console.log("---- Teste COM Bloqueio de Renderização ----");
-                toggleRenderBlocking(true);  //Torna o CSS bloqueador.
-                 window.location.reload();   //Recarrega para um teste limpo.
-            }, 7000); // Ajuste o tempo de espera conforme necessário.  7 segundos (7000ms) devem ser suficientes.
-
-           
-        }
-
-        // Adiciona os resultados à página (opcional):
-        const resultsDiv = document.createElement("div");
-        resultsDiv.id = "results";
-        document.body.appendChild(resultsDiv);
-
-        //Executa o teste ao carregar a página.
-        // window.onload = runTest; // Forma mais segura de garantir que tudo foi carregado.
-        runTest();  //Chama diretamente para facilitar o teste.  Em produção, use window.onload.
+    // --- Inicialização ---
+    setRenderBlocking(false); // Começa com CSS não bloqueador
+    localStorage.clear();     //Limpa o localStorage
 
     </script>
 </body>
